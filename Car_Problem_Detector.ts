@@ -5,14 +5,20 @@ const App = () => {
     // State to hold simulated car data
     const [engineTemp, setEngineTemp] = useState(90); // Celsius
     const [errorCodes, setErrorCodes] = useState([]); // List of simulated error codes
+    // FIX: Corrected useState declaration for gearChangeSmoothness
     const [gearChangeSmoothness, setGearChangeSmoothness] = useState(5); // 1 (smooth) to 10 (rough)
     const [accelerationSoundLevel, setAccelerationSoundLevel] = useState(60); // dB
 
-    // New states for fluid levels and leakage
+    // States for fluid levels and leakage
     const [transmissionOilLevel, setTransmissionOilLevel] = useState(9); // 1 (very low) to 10 (full)
     const [engineOilLevel, setEngineOilLevel] = useState(9); // 1 (very low) to 10 (full)
     const [coolantLevel, setCoolantLevel] = useState(9); // 1 (very low) to 10 (full)
     const [leakageDetected, setLeakageDetected] = useState(false); // Boolean for general leakage
+
+    // New states for AI model output
+    const [aiAnomalyDetected, setAiAnomalyDetected] = useState(false);
+    const [aiAnomalyDetails, setAiAnomalyDetails] = useState("AI monitoring for unusual patterns...");
+    const [aiLoading, setAiLoading] = useState(false); // To show loading state for AI
 
     const [carStatus, setCarStatus] = useState("Normal"); // Overall car status
     const [problemDetails, setProblemDetails] = useState(""); // Details about detected problems
@@ -22,10 +28,10 @@ const App = () => {
     const specificErrorCountRef = useRef(0);
     const roughGearChangeCountRef = useRef(0);
     const highSoundLevelCountRef = useRef(0);
-    const lowTransmissionOilCountRef = useRef(0); // New ref
-    const lowEngineOilCountRef = useRef(0);      // New ref
-    const lowCoolantCountRef = useRef(0);        // New ref
-    const leakageCountRef = useRef(0);           // New ref
+    const lowTransmissionOilCountRef = useRef(0);
+    const lowEngineOilCountRef = useRef(0);
+    const lowCoolantCountRef = useRef(0);
+    const leakageCountRef = useRef(0);
 
     // Constants for problem detection rules
     const TEMP_THRESHOLD = 105; // Degrees Celsius
@@ -39,51 +45,151 @@ const App = () => {
     const HIGH_SOUND_THRESHOLD = 85; // dB level considered high
     const CONSECUTIVE_HIGH_SOUND_LIMIT = 4;
 
-    // New constants for fluid levels and leakage
+    // Constants for fluid levels and leakage
     const LOW_FLUID_THRESHOLD = 3; // Level below which fluid is considered low (out of 10)
-    const CONSECUTIVE_LOW_FLUID_LIMIT = 2; // How many consecutive low fluid readings
-    const CONSECUTIVE_LEAKAGE_LIMIT = 1; // How many consecutive leakage detections
+    const CONSECUTIVE_LOW_FLUID_LIMIT = 2;
+    const CONSECUTIVE_LEAKAGE_LIMIT = 1;
 
-    // Simulate car data updates every second
+    // Simulate car data updates and AI analysis every second
     useEffect(() => {
-        const interval = setInterval(() => {
-            // Simulate engine temperature fluctuations
-            const newTemp = Math.floor(Math.random() * (115 - 85 + 1)) + 85; // Between 85 and 115
+        const interval = setInterval(async () => { // Made async to await AI response
+            // --- Simulate Sensor Data ---
+            const newTemp = Math.floor(Math.random() * (115 - 85 + 1)) + 85;
             setEngineTemp(newTemp);
 
-            // Simulate occasional error codes
-            if (Math.random() < 0.15) { // 15% chance of an error
+            if (Math.random() < 0.15) {
                 const allErrors = [
                     "P0101", "P0420", SPECIFIC_ENGINE_ERROR_CODE, "P0000", SPECIFIC_ENGINE_ERROR_CODE,
-                    ...TRANSMISSION_ERROR_CODES, "U0100" // Add some transmission and general comms errors
+                    ...TRANSMISSION_ERROR_CODES, "U0100"
                 ];
                 const randomError = allErrors[Math.floor(Math.random() * allErrors.length)];
-                setErrorCodes(prev => [...prev, randomError].slice(-5)); // Keep last 5 errors
+                setErrorCodes(prev => [...prev, randomError].slice(-5));
             } else {
-                setErrorCodes([]); // Clear errors if no new one generated
+                setErrorCodes([]);
             }
 
-            // Simulate gear change smoothness
             const newGearSmoothness = Math.random() < 0.2 ? Math.floor(Math.random() * (10 - 6 + 1)) + 6 : // 20% chance of rough (6-10)
                                       Math.floor(Math.random() * (5 - 1 + 1)) + 1; // 80% chance of smooth (1-5)
             setGearChangeSmoothness(newGearSmoothness);
 
-            // Simulate acceleration sound level
-            const newSoundLevel = Math.random() < 0.18 ? Math.floor(Math.random() * (95 - 80 + 1)) + 80 : // 18% chance of loud (80-95dB)
-                                  Math.floor(Math.random() * (75 - 55 + 1)) + 55; // 82% chance of normal (55-75dB)
+            const newSoundLevel = Math.random() < 0.18 ? Math.floor(Math.random() * (95 - 80 + 1)) + 80 :
+                                  Math.floor(Math.random() * (75 - 55 + 1)) + 55;
             setAccelerationSoundLevel(newSoundLevel);
 
-            // Simulate fluid levels (mostly high, occasional low)
             const simulateFluidLevel = () => {
-                return Math.random() < 0.1 ? Math.floor(Math.random() * (LOW_FLUID_THRESHOLD - 1 + 1)) + 1 : // 10% chance of low (1-LOW_FLUID_THRESHOLD)
-                                             Math.floor(Math.random() * (10 - (LOW_FLUID_THRESHOLD + 1) + 1)) + (LOW_FLUID_THRESHOLD + 1); // 90% chance of normal/high
+                return Math.random() < 0.1 ? Math.floor(Math.random() * (LOW_FLUID_THRESHOLD - 1 + 1)) + 1 :
+                                             Math.floor(Math.random() * (10 - (LOW_FLUID_THRESHOLD + 1) + 1)) + (LOW_FLUID_THRESHOLD + 1);
             };
             setTransmissionOilLevel(simulateFluidLevel());
             setEngineOilLevel(simulateFluidLevel());
             setCoolantLevel(simulateFluidLevel());
 
-            // Simulate leakage detection (occasional true)
-            setLeakageDetected(Math.random() < 0.05); // 5% chance of leakage
+            setLeakageDetected(Math.random() < 0.05);
+
+            // --- Simulate AI Model Analysis ---
+            setAiLoading(true); // Set loading state for AI
+            try {
+                const prompt = `Analyze the following car sensor data and determine if there is an unforeseen anomaly or a "new problem" not covered by standard error codes. Respond with a JSON object.
+                Current Car Data:
+                - Engine Temperature: ${newTemp}°C
+                - Error Codes: ${errorCodes.join(', ') || 'None'}
+                - Gear Change Smoothness: ${newGearSmoothness}/10
+                - Acceleration Sound Level: ${newSoundLevel} dB
+                - Transmission Oil Level: ${transmissionOilLevel}/10
+                - Engine Oil Level: ${engineOilLevel}/10
+                - Coolant Level: ${coolantLevel}/10
+                - Leakage Detected: ${leakageDetected ? 'Yes' : 'No'}
+
+                Consider if the combination of these parameters suggests something unusual or a developing issue.
+                Output JSON schema:
+                {
+                  "anomalyDetected": boolean,
+                  "details": string
+                }
+                If no anomaly, set anomalyDetected to false and details to "No unusual patterns detected."
+                `;
+
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = {
+                    contents: chatHistory,
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                "anomalyDetected": { "type": "BOOLEAN" },
+                                "details": { "type": "STRING" }
+                            },
+                            "propertyOrdering": ["anomalyDetected", "details"]
+                        }
+                    }
+                };
+                const apiKey = ""; // Canvas will automatically provide this
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                // Log the full result for debugging
+                console.log("AI API Response Status:", response.status);
+                const rawResponseText = await response.text(); // Get raw response text
+                console.log("AI API Raw Response Text:", rawResponseText);
+
+                let result;
+                if (rawResponseText) { // Ensure raw text is not empty before parsing
+                    try {
+                        result = JSON.parse(rawResponseText); // Parse the raw text
+                    } catch (parseError) {
+                        console.error("Error parsing raw AI model response text:", parseError);
+                        setAiAnomalyDetected(false);
+                        setAiAnomalyDetails("AI response malformed or incomplete.");
+                        setAiLoading(false);
+                        return; // Exit if raw parsing fails
+                    }
+                } else {
+                    setAiAnomalyDetected(false);
+                    setAiAnomalyDetails("AI returned empty response body.");
+                    setAiLoading(false);
+                    return; // Exit if raw response is empty
+                }
+
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const jsonString = result.candidates[0].content.parts[0].text;
+                    
+                    // Log the extracted JSON string for debugging
+                    console.log("AI API JSON String from candidate:", jsonString);
+
+                    if (jsonString) { // Ensure jsonString from candidate is not empty
+                        try {
+                            const parsedJson = JSON.parse(jsonString);
+                            setAiAnomalyDetected(parsedJson.anomalyDetected);
+                            setAiAnomalyDetails(parsedJson.details);
+                        } catch (parseError) {
+                            console.error("Error parsing AI model JSON response from candidate:", parseError);
+                            setAiAnomalyDetected(false);
+                            setAiAnomalyDetails("AI candidate response format error.");
+                        }
+                    } else {
+                        setAiAnomalyDetected(false);
+                        setAiAnomalyDetails("AI candidate returned empty text.");
+                    }
+                } else {
+                    setAiAnomalyDetected(false);
+                    setAiAnomalyDetails("AI response structure unexpected or no candidates.");
+                }
+            } catch (error) {
+                console.error("Error calling AI model (fetch or network issue):", error);
+                setAiAnomalyDetected(false);
+                setAiAnomalyDetails("AI analysis failed: " + error.message);
+            } finally {
+                setAiLoading(false); // Clear loading state
+            }
 
         }, 1000); // Update every 1 second
 
@@ -91,7 +197,7 @@ const App = () => {
         return () => clearInterval(interval);
     }, []);
 
-    // Effect to detect problems based on simulated data
+    // Effect to detect problems based on simulated data and AI output
     useEffect(() => {
         let currentStatus = "Normal";
         let currentProblemDetails = "";
@@ -157,7 +263,7 @@ const App = () => {
             highSoundLevelCountRef.current = 0;
         }
 
-        // Rule 5: Low Transmission Oil Level (New Rule)
+        // Rule 5: Low Transmission Oil Level
         if (transmissionOilLevel <= LOW_FLUID_THRESHOLD) {
             lowTransmissionOilCountRef.current++;
             if (lowTransmissionOilCountRef.current >= CONSECUTIVE_LOW_FLUID_LIMIT) {
@@ -169,7 +275,7 @@ const App = () => {
             lowTransmissionOilCountRef.current = 0;
         }
 
-        // Rule 6: Low Engine Oil Level (New Rule)
+        // Rule 6: Low Engine Oil Level
         if (engineOilLevel <= LOW_FLUID_THRESHOLD) {
             lowEngineOilCountRef.current++;
             if (lowEngineOilCountRef.current >= CONSECUTIVE_LOW_FLUID_LIMIT) {
@@ -181,7 +287,7 @@ const App = () => {
             lowEngineOilCountRef.current = 0;
         }
 
-        // Rule 7: Low Coolant Level (New Rule)
+        // Rule 7: Low Coolant Level
         if (coolantLevel <= LOW_FLUID_THRESHOLD) {
             lowCoolantCountRef.current++;
             if (lowCoolantCountRef.current >= CONSECUTIVE_LOW_FLUID_LIMIT) {
@@ -193,7 +299,7 @@ const App = () => {
             lowCoolantCountRef.current = 0;
         }
 
-        // Rule 8: Leakage Detected (New Rule)
+        // Rule 8: Leakage Detected
         if (leakageDetected) {
             leakageCountRef.current++;
             if (leakageCountRef.current >= CONSECUTIVE_LEAKAGE_LIMIT) {
@@ -201,6 +307,11 @@ const App = () => {
             }
         } else {
             leakageCountRef.current = 0;
+        }
+
+        // Rule 9: AI Model Anomaly Detection (New Rule)
+        if (aiAnomalyDetected) {
+            setProblem("Critical", `AI Anomaly: ${aiAnomalyDetails}`);
         }
 
 
@@ -217,7 +328,8 @@ const App = () => {
 
     }, [
         engineTemp, errorCodes, gearChangeSmoothness, accelerationSoundLevel,
-        transmissionOilLevel, engineOilLevel, coolantLevel, leakageDetected // Add new dependencies
+        transmissionOilLevel, engineOilLevel, coolantLevel, leakageDetected,
+        aiAnomalyDetected, aiAnomalyDetails // Add new AI dependencies
     ]);
 
     // Determine color based on status
@@ -246,7 +358,6 @@ const App = () => {
                         <span className="text-gray-600 font-medium">Acceleration Sound:</span>
                         <span className="text-blue-600 font-bold text-lg">{accelerationSoundLevel} dB</span>
                     </div>
-                    {/* New Fluid Level Displays */}
                     <div className="flex justify-between items-center bg-gray-50 p-4 rounded-lg mb-2">
                         <span className="text-gray-600 font-medium">Transmission Oil Level:</span>
                         <span className="text-blue-600 font-bold text-lg">{transmissionOilLevel}/10</span>
@@ -266,7 +377,7 @@ const App = () => {
                         </span>
                     </div>
 
-                    <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="bg-gray-50 p-4 rounded-lg mb-2">
                         <span className="text-gray-600 font-medium">Recent Error Codes:</span>
                         <div className="mt-2 flex flex-wrap gap-2">
                             {errorCodes.length > 0 ? (
@@ -277,6 +388,20 @@ const App = () => {
                                 ))
                             ) : (
                                 <span className="text-gray-500 text-sm italic">No recent errors</span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* New AI Model Status Display */}
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                        <span className="text-gray-600 font-medium">AI Anomaly Detection:</span>
+                        <div className="mt-2 text-sm">
+                            {aiLoading ? (
+                                <span className="text-gray-500 italic">Analyzing...</span>
+                            ) : (
+                                <span className={`font-semibold ${aiAnomalyDetected ? 'text-red-600' : 'text-green-600'}`}>
+                                    {aiAnomalyDetails}
+                                </span>
                             )}
                         </div>
                     </div>
